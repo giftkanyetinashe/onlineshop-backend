@@ -147,6 +147,7 @@ CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",  # React frontend
     'https://onlineshop-frontend-qwugws7js-ganyek2018gmailcoms-projects.vercel.app',
+    'https://onlineshop-frontend-4g64.onrender.com',
 ]
 
 REST_FRAMEWORK = {
