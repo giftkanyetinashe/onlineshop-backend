@@ -38,18 +38,30 @@ class OrderItem(models.Model):
         return f"{self.quantity} x {self.variant.product.name} in order {self.order.order_number}"
 
 class BannerContent(models.Model):
-    TYPE_CHOICES = [
-        ('video', 'Video'),
-        ('image', 'Image'),
-    ]
-    type = models.CharField(max_length=10, choices=TYPE_CHOICES)
-    src = models.URLField(max_length=500, blank=True, null=True)
-    media_file = models.FileField(upload_to='banner_media/' , blank=True, null=True)
-    alt = models.CharField(max_length=255)
-    duration = models.PositiveIntegerField(default=5000)  # duration in milliseconds
-    overlayText = models.CharField(max_length=255)
-    ctaText = models.CharField(max_length=100)
-    ctaLink = models.CharField(max_length=255)
+    TYPE_CHOICES = [('video', 'Video'), ('image', 'Image')]
+
+    # Core Fields
+    type = models.CharField(max_length=10, choices=TYPE_CHOICES, default='image')
+    alt = models.CharField(max_length=255, help_text="Important for SEO and accessibility.")
+    
+    # Media Fields (World-Class Upgrade)
+    media_file = models.FileField(upload_to='banner_media/', help_text="Desktop version (landscape recommended).")
+    media_file_mobile = models.FileField(upload_to='banner_media/mobile/', blank=True, null=True, help_text="Optional: Mobile version (portrait recommended). If empty, desktop version is used.")
+
+    # Overlay Content
+    overlay_text = models.CharField(max_length=255)
+    cta_text = models.CharField(max_length=100)
+    cta_link = models.CharField(max_length=255, help_text="e.g., /products/revitalizing-serum")
+
+    # Control Fields (World-Class Upgrade)
+    duration = models.PositiveIntegerField(default=7000, help_text="For images: duration in milliseconds (e.g., 7000 = 7 seconds).")
+    loop_video = models.BooleanField(default=False, help_text="For videos: check if the video should loop instead of advancing.")
+    order = models.PositiveIntegerField(default=0, help_text="Order in which banner appears (0 first, 1 second, etc.).")
+    is_active = models.BooleanField(default=True, help_text="Uncheck to hide this banner from the site without deleting it.")
+    
+    class Meta:
+        ordering = ['order'] # Ensure banners are ordered correctly by default
 
     def __str__(self):
-        return f"{self.type} - {self.alt}"
+        status = "Active" if self.is_active else "Inactive"
+        return f"{self.alt} (Order: {self.order}) - [{status}]"

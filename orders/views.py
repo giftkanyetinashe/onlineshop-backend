@@ -1,6 +1,8 @@
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from .permissions import IsAdminUserOrReadOnly
+
 from rest_framework.parsers import MultiPartParser, FormParser
 from .models import BannerContent, Order, OrderItem
 from .serializers import (
@@ -13,27 +15,44 @@ import random
 import string
 from rest_framework.views import APIView
 from django.db import transaction
+from rest_framework import filters # Add this import
 
 # ------------------------------
 # Banner Content Views
 # ------------------------------
 
 class BannerContentListCreate(generics.ListCreateAPIView):
-    queryset = BannerContent.objects.all()
+    # World-Class Upgrade: Only show active banners on the public site
+    queryset = BannerContent.objects.filter(is_active=True).order_by('order') 
     serializer_class = BannerContentSerializer
-    permission_classes = [IsAuthenticated]
+    # Allow anyone to view, but only staff to create/edit
+    permission_classes = [IsAdminUserOrReadOnly] 
     parser_classes = [MultiPartParser, FormParser]
+    # No filter_backends needed if default ordering is set in queryset
 
-    def perform_create(self, serializer):
-        serializer.save()
+# ... The Detail view remains mostly the same, but should also use IsAdminUserOrReadOnly
 
 
 class BannerContentDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = BannerContent.objects.all()
     serializer_class = BannerContentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAdminUser] # Use IsAdminUser for detail view
     parser_classes = [MultiPartParser, FormParser]
 
+    # --- THIS IS THE FIX ---
+    # Override the partial_update method to correctly handle file uploads
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        # Handle boolean fields from form data which come as strings
+        for field in ['is_active', 'loop_video']:
+            if field in request.data:
+                request.data[field] = request.data[field].lower() in ['true', '1']
+        
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        return Response(serializer.data)
 
 # ------------------------------
 # Order Views

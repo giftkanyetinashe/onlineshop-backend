@@ -93,21 +93,31 @@ class ProductVariantSerializer(serializers.ModelSerializer):
 
 
 
-# ------------------------------
-# Banner Content Serializer
-# ------------------------------
+# in serializers.py
 
 class BannerContentSerializer(serializers.ModelSerializer):
+    media_url = serializers.SerializerMethodField()
+    media_url_mobile = serializers.SerializerMethodField()
+
     class Meta:
         model = BannerContent
-        fields = '__all__'
-        extra_kwargs = {
-            'src': {'required': False, 'allow_null': True, 'allow_blank': True},
-            'media_file': {'required': False, 'allow_null': True}
-        }
+        fields = [
+            'id', 'type', 'alt', 
+            'media_file', 'media_file_mobile',  # <== Add these fields
+            'media_url', 'media_url_mobile', 
+            'overlay_text', 'cta_text', 'cta_link', 
+            'duration', 'loop_video', 'order', 'is_active'
+        ]
 
-    def get_media_file(self, obj):
+    def get_media_url(self, obj):
         request = self.context.get('request')
         if obj.media_file and request:
             return request.build_absolute_uri(obj.media_file.url)
+        return None
+
+    def get_media_url_mobile(self, obj):
+        request = self.context.get('request')
+        media_file = obj.media_file_mobile or obj.media_file
+        if media_file and request:
+            return request.build_absolute_uri(media_file.url)
         return None

@@ -59,10 +59,39 @@ class OrderAdmin(admin.ModelAdmin):
         return super().get_queryset(request).select_related('user')
     
 
-
 @admin.register(BannerContent)
 class BannerContentAdmin(admin.ModelAdmin):
-    list_display = ('id', 'type', 'alt', 'overlayText', 'ctaText', 'duration')
-    list_filter = ('type',)
-    search_fields = ('alt', 'overlayText', 'ctaText')
-    ordering = ('id',)
+    list_display = (
+        'alt', 'type', 'order', 'is_active', 'duration', 'loop_video', 'preview_media'
+    )
+    list_filter = ('type', 'is_active', 'loop_video')
+    search_fields = ('alt', 'overlay_text', 'cta_text', 'cta_link')
+    list_editable = ('order', 'is_active')
+    ordering = ('order',)
+
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('type', 'alt', 'overlay_text', 'cta_text', 'cta_link')
+        }),
+        ('Media Files', {
+            'fields': ('media_file', 'media_file_mobile'),
+            'description': 'Desktop and optional mobile version of the media.'
+        }),
+        ('Display Settings', {
+            'fields': ('duration', 'loop_video', 'order', 'is_active'),
+            'description': 'Control how the banner behaves and appears.'
+        }),
+    )
+
+    def preview_media(self, obj):
+        if obj.media_file:
+            if obj.type == 'image':
+                return f'<img src="{obj.media_file.url}" width="100" />'
+            else:
+                return f'<video width="100" controls><source src="{obj.media_file.url}" type="video/mp4"></video>'
+        return "-"
+    preview_media.short_description = "Preview"
+    preview_media.allow_tags = True  # This is deprecated in Django 2+, use format_html if needed
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related()
