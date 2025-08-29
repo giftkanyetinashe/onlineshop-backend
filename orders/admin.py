@@ -4,8 +4,8 @@ from .models import *
 class OrderItemInline(admin.TabularInline):
     model = OrderItem
     extra = 0
-    readonly_fields = ['variant', 'quantity', 'price']
-    fields = ['variant', 'quantity', 'price', 'item_total']
+    readonly_fields = ['quantity', 'price', 'item_total']
+    fields = ['variant', 'quantity', 'price']
     
     def item_total(self, obj):
         return obj.quantity * obj.price
@@ -57,6 +57,16 @@ class OrderAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('user')
+
+    def save_model(self, request, obj, form, change):
+        # Calculate total_price from related OrderItems
+        total_price = 0
+        if obj.pk:
+            order_items = obj.items.all()
+            for item in order_items:
+                total_price += item.quantity * item.price
+        obj.total_price = total_price
+        super().save_model(request, obj, form, change)
     
 
 @admin.register(BannerContent)
@@ -95,3 +105,33 @@ class BannerContentAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related()
+        
+ 
+ 
+@admin.register(PromoCode)
+class PromoCodeAdmin(admin.ModelAdmin):
+    list_display = [
+        'code',
+        'discount_type',
+        'value',
+        'is_active',
+        'valid_from',
+        'valid_to',
+        'usage_limit',
+        'min_purchase_amount',
+    ]
+    list_filter = ['is_active', 'discount_type', 'valid_from', 'valid_to']
+    search_fields = ['code']
+    ordering = ['-valid_from']
+    fieldsets = (
+        ('Code Info', {
+            'fields': ('code', 'discount_type', 'value')
+        }),
+        ('Validity', {
+            'fields': ('is_active', 'valid_from', 'valid_to')
+        }),
+        ('Restrictions', {
+            'fields': ('usage_limit', 'min_purchase_amount')
+        }),
+    )
+     

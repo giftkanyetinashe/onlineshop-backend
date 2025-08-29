@@ -17,5 +17,11 @@ urlpatterns = [
     path('categories/', CategoryListView.as_view(), name='category-list'),
     path('categories/<slug:slug>/', CategoryDetailView.as_view(), name='category-detail'),
     path('categories/<slug:slug>/products/', CategoryProductsView.as_view(), name='category-products'),
+
+    # --- NEW: Tag URL ---
+    path('tags/', TagListCreateView.as_view(), name='tag-list-create'),
+    
+    # --- NEW: Review URLs ---
+    path('products/<slug:product_slug>/reviews/', ReviewListCreateView.as_view(), name='product-reviews-list-create'),
     
 ]

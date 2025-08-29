@@ -8,7 +8,7 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Count
 from django.urls import reverse
 from rest_framework import generics, filters, permissions, status
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticated, AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
 from .models import *
 from .serializers import *
@@ -166,17 +166,36 @@ class CategoryProductsView(generics.ListAPIView):
 
 
 
-class ProductList(generics.ListCreateAPIView):
-    queryset = Product.objects.filter(is_active=True)
-    serializer_class = ProductSerializer
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['category', 'gender', 'is_featured']
-    search_fields = ['name', 'description', 'brand']
-    ordering_fields = ['price', 'created_at', 'updated_at']
-    permission_classes = [IsAuthenticatedOrReadOnly]
 
+
+
+
+
+# products/views.py
+class ProductList(generics.ListCreateAPIView):
+    queryset = Product.objects.filter(is_active=True).prefetch_related('tags', 'category', 'variants')
+    serializer_class = ProductSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    
+    # World-class filtering for a cosmetics store
+    filterset_fields = {
+        'category__slug': ['exact', 'in'],
+        'tags__slug': ['exact', 'in'], # Filter by tags like 'vegan' or 'cruelty-free'
+        'brand': ['exact', 'in'],
+        'skin_types': ['icontains'], # Case-insensitive contains
+        'skin_concerns': ['icontains'],
+        'finish': ['exact', 'in'],
+        'coverage': ['exact', 'in'],
+        'is_featured': ['exact'],
+        'display_price': ['gte', 'lte', 'exact'],
+    }
+    search_fields = ['name', 'tagline', 'description', 'brand', 'ingredients']
+    ordering_fields = ['display_price', 'created_at', 'name']
+
+# --- ProductDetail and FeaturedProducts (Unchanged) ---
 class ProductDetail(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Product.objects.all()
+    queryset = Product.objects.all().prefetch_related('tags', 'category', 'images', 'variants', 'reviews__user')
     serializer_class = ProductSerializer
     lookup_field = 'slug'
     permission_classes = [IsAuthenticatedOrReadOnly]
@@ -184,29 +203,32 @@ class ProductDetail(generics.RetrieveUpdateDestroyAPIView):
 class FeaturedProducts(generics.ListAPIView):
     queryset = Product.objects.filter(is_featured=True, is_active=True)
     serializer_class = ProductSerializer
+    permission_classes = [AllowAny]
 
-
-class ProductVariantListView(ListCreateAPIView):  # Now supports GET + POST
+# --- Product Variant and Image Views (Unchanged logic, just using new serializers) ---
+class ProductVariantListView(generics.ListCreateAPIView):
     serializer_class = ProductVariantSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
+    def get_queryset(self):
+        return ProductVariant.objects.filter(product__slug=self.kwargs['product_slug'])
+    def perform_create(self, serializer):
+        product = get_object_or_404(Product, slug=self.kwargs['product_slug'])
+        serializer.save(product=product)
 
+class ProductVariantDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = ProductVariant.objects.all()
+    serializer_class = ProductVariantSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
     def get_queryset(self):
         return ProductVariant.objects.filter(product__slug=self.kwargs['product_slug'])
 
-    def perform_create(self, serializer):
-        product = Product.objects.get(slug=self.kwargs['product_slug'])
-        serializer.save(product=product)  # Auto-link variant to product
-
 class ProductImageView(generics.ListCreateAPIView):
-    queryset = ProductImage.objects.all()
     serializer_class = ProductImageSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
-
     def get_queryset(self):
         return ProductImage.objects.filter(product__slug=self.kwargs['product_slug'])
-
     def perform_create(self, serializer):
-        product = Product.objects.get(slug=self.kwargs['product_slug'])
+        product = get_object_or_404(Product, slug=self.kwargs['product_slug'])
         serializer.save(product=product)
 
 class ProductImageDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -214,11 +236,27 @@ class ProductImageDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ProductImageSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
 
-
-class ProductVariantDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = ProductVariant.objects.all()
-    serializer_class = ProductVariantSerializer
+# --- NEW: Tag List and Create View ---
+class TagListCreateView(generics.ListCreateAPIView):
+    queryset = Tag.objects.all()
+    serializer_class = TagSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
 
+# --- NEW: Review List and Create View ---
+class ReviewListCreateView(generics.ListCreateAPIView):
+    serializer_class = ReviewSerializer
+    
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsAuthenticated()]
+        return [AllowAny()]
+
     def get_queryset(self):
-        return ProductVariant.objects.filter(product__slug=self.kwargs['product_slug'])
+        return Review.objects.filter(product__slug=self.kwargs['product_slug'])
+
+    def perform_create(self, serializer):
+        product = get_object_or_404(Product, slug=self.kwargs['product_slug'])
+        # Check if user has already reviewed
+        if Review.objects.filter(product=product, user=self.request.user).exists():
+            raise serializers.ValidationError({"detail": "You have already reviewed this product."})
+        serializer.save(user=self.request.user, product=product)

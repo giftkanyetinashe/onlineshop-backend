@@ -4,9 +4,35 @@ from products.models import ProductVariant
 
 User = get_user_model()
 
+
+class PromoCode(models.Model):
+    DISCOUNT_TYPE_CHOICES = [
+        ('PERCENT', 'Percentage'),
+        ('FIXED', 'Fixed Amount'),
+    ]
+
+    code = models.CharField(max_length=50, unique=True, help_text="The code the customer enters (e.g., WELCOME10).")
+    discount_type = models.CharField(max_length=10, choices=DISCOUNT_TYPE_CHOICES)
+    value = models.DecimalField(max_digits=10, decimal_places=2, help_text="The percentage (e.g., 10.00) or fixed amount (e.g., 5.00).")
+    
+    is_active = models.BooleanField(default=True)
+    valid_from = models.DateTimeField()
+    valid_to = models.DateTimeField(null=True, blank=True, help_text="Leave blank for no expiry date.")
+    
+    usage_limit = models.PositiveIntegerField(default=100, help_text="How many times this code can be used in total.")
+    min_purchase_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="The minimum cart total required to use this code.")
+
+    def __str__(self):
+        if self.discount_type == 'PERCENT':
+            return f"{self.code} ({self.value}% off)"
+        return f"{self.code} (${self.value} off)"
+
+
+
 class Order(models.Model):
     STATUS_CHOICES = [
         ('P', 'Pending'),
+        ('OH', 'On Hold'),  # Add this new status
         ('PR', 'Processing'),
         ('S', 'Shipped'),
         ('D', 'Delivered'),
@@ -24,6 +50,8 @@ class Order(models.Model):
     payment_method = models.CharField(max_length=50)
     payment_status = models.BooleanField(default=False)
     tracking_number = models.CharField(max_length=50, blank=True, null=True)
+    promo_code = models.ForeignKey(PromoCode, on_delete=models.SET_NULL, null=True, blank=True)
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     def __str__(self):
         return self.order_number
@@ -65,3 +93,7 @@ class BannerContent(models.Model):
     def __str__(self):
         status = "Active" if self.is_active else "Inactive"
         return f"{self.alt} (Order: {self.order}) - [{status}]"
+    
+    
+    # in orders/models.py (or a new 'discounts' app)
+

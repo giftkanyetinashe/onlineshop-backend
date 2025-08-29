@@ -15,19 +15,8 @@ class UserSerializer(serializers.ModelSerializer):
         extra_kwargs = {'password': {'write_only': True}}
     
     def create(self, validated_data):
-        print(validated_data)  # Debugging: Check if 'password' is present
-        user = User.objects.create_user(
-            username=validated_data['username'],
-            email=validated_data.get('email', ''),
-            password=validated_data['password'],
-            first_name=validated_data.get('first_name', ''),
-            last_name=validated_data.get('last_name', ''),
-            phone=validated_data.get('phone', ''),
-            address=validated_data.get('address', ''),
-            city=validated_data.get('city', ''),
-            country=validated_data.get('country', ''),
-            postal_code=validated_data.get('postal_code', ''),
-        )
+        # Your create method is correct.
+        user = User.objects.create_user(**validated_data)
         return user
 
 
@@ -38,3 +27,21 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['username'] = user.username
         token['is_staff'] = user.is_staff  # Add is_staff claim to token
         return token
+
+
+
+class UserAdminSerializer(serializers.ModelSerializer):
+    """
+    Provides detailed user information for the admin dashboard,
+    including calculated fields for order history.
+    """
+    order_count = serializers.IntegerField(read_only=True)
+    total_spent = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name', 
+            'is_staff', 'is_active', 'date_joined',
+            'order_count', 'total_spent'
+        ]

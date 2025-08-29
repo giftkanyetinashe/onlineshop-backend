@@ -5,7 +5,7 @@ import requests
 import uuid
 from urllib.parse import urlencode, unquote
 from decimal import Decimal
-
+from django.db import transaction
 from django.conf import settings
 from django.http import HttpResponse
 from django.utils.decorators import method_decorator
@@ -203,3 +203,105 @@ class CheckPaymentStatusView(APIView):
             return Response({'status': payment.status}, status=status.HTTP_200_OK)
         except Payment.DoesNotExist:
             return Response({'error': 'Payment not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+
+
+
+
+
+#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+#----------------------------------------------------------------PayPal-------------------------------------------------------------------------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Helper function to get a PayPal access token
+def get_paypal_access_token():
+    auth = (settings.PAYPAL_CLIENT_ID, settings.PAYPAL_CLIENT_SECRET)
+    headers = {'Accept': 'application/json', 'Accept-Language': 'en_US'}
+    data = {'grant_type': 'client_credentials'}
+    url = f"{settings.PAYPAL_API_BASE}/v1/oauth2/token"
+    
+    try:
+        response = requests.post(url, auth=auth, headers=headers, data=data)
+        response.raise_for_status()
+        return response.json()['access_token']
+    except requests.exceptions.RequestException as e:
+        print(f"Error getting PayPal token: {e}")
+        return None
+
+class PayPalCreateOrderView(APIView):
+    def post(self, request, *args, **kwargs):
+        order_id = request.data.get('order_id')
+        try:
+            order = Order.objects.get(id=order_id, user=request.user)
+        except Order.DoesNotExist:
+            return Response({"error": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        access_token = get_paypal_access_token()
+        if not access_token:
+            return Response({"error": "Could not authenticate with PayPal."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        url = f"{settings.PAYPAL_API_BASE}/v2/checkout/orders"
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {access_token}',
+        }
+        data = {
+            "intent": "CAPTURE",
+            "purchase_units": [{
+                "amount": {
+                    "currency_code": "USD", # Or your desired currency
+                    "value": str(order.total_price)
+                },
+                "reference_id": str(order.order_number)
+            }]
+        }
+
+        try:
+            response = requests.post(url, headers=headers, json=data)
+            response.raise_for_status()
+            return Response(response.json(), status=status.HTTP_201_CREATED)
+        except requests.exceptions.RequestException as e:
+            return Response({"error": f"Failed to create PayPal order: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class PayPalCaptureOrderView(APIView):
+    def post(self, request, *args, **kwargs):
+        paypal_order_id = request.data.get('paypal_order_id')
+        user_order_id = request.data.get('user_order_id')
+
+        access_token = get_paypal_access_token()
+        if not access_token:
+            return Response({"error": "Could not authenticate with PayPal."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        url = f"{settings.PAYPAL_API_BASE}/v2/checkout/orders/{paypal_order_id}/capture"
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {access_token}',
+        }
+
+        try:
+            with transaction.atomic():
+                order = Order.objects.select_for_update().get(id=user_order_id, user=request.user)
+                
+                if order.payment_status:
+                    return Response({"message": "Order already paid."}, status=status.HTTP_400_BAD_REQUEST)
+
+                response = requests.post(url, headers=headers)
+                response.raise_for_status()
+                paypal_data = response.json()
+
+                # CRITICAL: Verify the payment
+                if paypal_data.get('status') == 'COMPLETED':
+                    order.payment_status = True
+                    order.status = 'PR'  # Set to Processing
+                    order.save()
+                    return Response({"message": "Payment successful!", "order_id": order.id}, status=status.HTTP_200_OK)
+                else:
+                    return Response({"error": "Payment not completed by PayPal."}, status=status.HTTP_400_BAD_REQUEST)
+
+        except Order.DoesNotExist:
+            return Response({"error": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+        except requests.exceptions.RequestException as e:
+            return Response({"error": f"Failed to capture PayPal order: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
