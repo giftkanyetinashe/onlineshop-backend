@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     'mptt',
     'django_extensions',
     'payments',
+    'reports',
 ]
 
 
