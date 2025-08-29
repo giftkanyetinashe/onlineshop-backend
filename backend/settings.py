@@ -93,7 +93,7 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 DATABASES = {
     'default': dj_database_url.config(
-        default='postgresql://nuareskyn_8uum_user:hOwtPPcEG5JEi0TrdVzbl77s8HZplgym@dpg-d2onjbvdiees73fl8280-a/nuareskyn_8uum',
+        default='postgresql://nuareskyn_8uum_user:hOwtPPcEG5JEi0TrdVzbl77s8HZplgym@dpg-d2onjbvdiees73fl8280-a.oregon-postgres.render.com/nuareskyn_8uum',
         conn_max_age=600,
         ssl_require=True
     )
